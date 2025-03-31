@@ -1,0 +1,38 @@
+name: Tests
+on:
+  push:
+    branches:
+      - main
+      - "v*"
+  pull_request:
+
+jobs:
+  pytest:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}/schemate
+    strategy:
+      matrix:
+        python-version: ["3.11.x", "3.12.x"]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+            path: ${{ github.workspace }}/schemate
+
+      - name: Setup Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r tests/requirements.txt
+
+      - name: Run Tests
+        run: pytest
