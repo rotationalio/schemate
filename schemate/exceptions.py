@@ -19,3 +19,12 @@ class ConfigLoadError(SchemateException, ValueError):
 
 class InvalidConfiguration(SchemateException):
     pass
+
+
+class LoaderError(SchemateException):
+    """Errors related to data loaders."""
+    pass
+
+
+class UnsupportedLoader(LoaderError, ValueError):
+    pass
