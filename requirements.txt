@@ -1,4 +1,6 @@
 # Primary Dependencies
+colorama==0.4.6
+PyYAML==6.0.2
 
 # Packaging Dependencies
 # black==25.1.0
