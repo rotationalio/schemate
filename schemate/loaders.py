@@ -49,17 +49,24 @@ class FileLoader(Loader):
         Returns true if the extension of the specified path is one of the supported
         file types that can be loaded by this class.
         """
-        return os.path.splitext(os.path.basename(path))[1] in FileLoader.SUPPORTED_TYPES
+        return FileLoader.extension(path) in FileLoader.SUPPORTED_TYPES
+
+    @staticmethod
+    def extension(path: str) -> str:
+        """
+        Returns the normalized extension of the specified path.
+        """
+        return os.path.splitext(os.path.basename(path))[1].lower()
 
     def __init__(self, path: str):
         self._path = path
-        self._ext = os.path.splitext(os.path.basename(path))[1]
+        self._ext = self.extension(path)
         self._count = None
 
         if self._ext not in self.SUPPORTED_TYPES:
             raise UnsupportedLoader(f"unsupported file type: {self._ext}")
 
-    def count(self):
+    def __len__(self):
         if self._count is None:
             # In this case we haven't performed an iteration, so count manually.
             if self._ext in {".jsonlines", ".jsonl"}:
@@ -142,9 +149,9 @@ class MultiFileLoader(Loader):
             FileLoader(path) for path in paths
         ]
 
-    def count(self):
+    def __len__(self):
         if self._count is None:
-            self._count = sum(loader.count() for loader in self._loaders)
+            self._count = sum(len(loader) for loader in self._loaders)
         return self._count
 
     def filenames(self):
@@ -246,7 +253,7 @@ class MongoDBLoader(Loader):
             for collection in collections:
                 self._collections.append(self._db[collection])
 
-    def count(self):
+    def __len__(self):
         if self._count is None:
             self._count = sum(
                 collection.count_documents({})
