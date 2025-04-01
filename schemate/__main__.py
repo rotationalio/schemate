@@ -10,7 +10,6 @@ import argparse
 from .config import Config
 from .version import get_version
 from .exceptions import SchemateException, CommandError
-from .exceptions import ConfigLoadError, InvalidConfiguration
 
 
 def analyze(args: argparse.Namespace) -> None:
