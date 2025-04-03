@@ -30,7 +30,7 @@ class SchemaAnalysis(object):
         """
         Perform an analysis on the documents provided by the loader.
         """
-        self._result = Profile()
+        self._result = Profile(schema=None)
         for document in self._loader:
             self.analyze(document)
 

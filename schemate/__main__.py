@@ -28,7 +28,7 @@ def testrun(args: argparse.Namespace) -> None:
     job = SchemaAnalysis(loader)
     job.run()
 
-    print(job.result)
+    print(job.result.dumps(indent=2))
 
 
 ##########################################################################

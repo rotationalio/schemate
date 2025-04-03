@@ -2,13 +2,19 @@
 Schemate profile classes for analyzing and generating JSON schema profiles.
 """
 
-import dataclasses
+import json
 
 from .types import Type
-from typing import Optional, List, Dict
+from .serialize import Encoder
+
+from dataclasses import dataclass, field
+from typing import Optional, List, Dict, Union
 
 
-@dataclasses.dataclass(init=True, repr=False, eq=True, order=False, frozen=True)
+Properties = Union["Property", "ObjectProperty", "ArrayProperty", "AmbiguousProperty"]
+
+
+@dataclass(init=True, repr=False, eq=True, order=False)
 class Profile:
     """
     A profile of a schemaless document or group of documents. The profile contains
@@ -17,12 +23,28 @@ class Profile:
     schema or another schema format.
     """
 
+    schema: Properties
     documents: int = 0
     ambiguous: int = 0
-    schema: "Property" | "ObjectProperty" | "ArrayProperty" | "AmbiguousProperty"
+
+    def dump(self, fp, **kwargs):
+        """
+        Dumps the profile as a JSON document using the json.dump arguments.
+        """
+        if "cls" not in kwargs:
+            kwargs["cls"] = Encoder
+        return json.dump(self, fp, **kwargs)
+
+    def dumps(self, *args, **kwargs):
+        """
+        Dumps the profile as a JSON string using the json.dumps arguments.
+        """
+        if "cls" not in kwargs:
+            kwargs["cls"] = Encoder
+        return json.dumps(self, **kwargs)
 
 
-@dataclasses.dataclass(init=True, repr=False, eq=False)
+@dataclass(init=True, repr=False, eq=False)
 class Property:
     """
     A property describes a field in a document as well as the number of times that
@@ -36,7 +58,7 @@ class Property:
     unique: Optional[int] = 0
 
 
-@dataclasses.dataclass(init=True, repr=False, eq=False)
+@dataclass(init=True, repr=False, eq=False, kw_only=True)
 class AmbiguousProperty(Property):
     """
     An ambiguous property describes a field that has multiple types. All types observed
@@ -46,10 +68,10 @@ class AmbiguousProperty(Property):
     """
 
     type: Type = Type.AMBIGUOUS
-    types: List["Property"]
+    types: List[Properties] = field(default_factory=list)
 
 
-@dataclasses.dataclass(init=True, repr=False, eq=False)
+@dataclass(init=True, repr=False, eq=False, kw_only=True)
 class ObjectProperty(Property):
     """
     Allows nested properties to be defined for a document or for fields in the document.
@@ -58,10 +80,10 @@ class ObjectProperty(Property):
     """
 
     type: Type = Type.OBJECT
-    properties: Dict["Property" | "ObjectProperty" | "ArrayProperty" | "AmbiguousProperty"]
+    properties: Dict[str, Properties] = field(default_factory=dict)
 
 
-@dataclasses.dataclass(init=True, repr=False, eq=False)
+@dataclass(init=True, repr=False, eq=False, kw_only=True)
 class ArrayProperty(Property):
     """
     Allows for a property to be a list and define what the properties are of each of
@@ -70,4 +92,4 @@ class ArrayProperty(Property):
     """
 
     type: Type = Type.ARRAY
-    items: "Property" | "ObjectProperty" | "ArrayProperty" | "AmbiguousProperty"
+    items: Properties
