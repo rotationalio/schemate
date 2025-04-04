@@ -3,6 +3,12 @@ Schemate profile classes for analyzing and generating JSON schema profiles.
 """
 
 import json
+import uuid
+import datetime
+import bson.int64
+import bson.binary
+import bson.objectid
+import bson.timestamp
 
 from .serialize import Encoder
 from .types import Type, is_base64
@@ -57,6 +63,7 @@ def cast(value: Any, text_limit: int = DEFAULT_TEXT_LIMIT) -> PropertyType:
     Cast a value from JSON into a property type. This is the first step in schema
     analysis and is used to determine how to treat the value in the document.
     """
+    # Handle standard JSON types
     if value is None:
         return Property(type=Type.NULL, count=1)
 
@@ -102,6 +109,29 @@ def cast(value: Any, text_limit: int = DEFAULT_TEXT_LIMIT) -> PropertyType:
         for item in items[1:]:
             merged = merged.merge(item)
         return ArrayProperty(type=Type.ARRAY, count=1, items=merged)
+
+    # The following are BSON or Extended JSON types
+    if isinstance(value, datetime.datetime):
+        return Property(type=Type.DATETIME, count=1)
+
+    if isinstance(value, bson.objectid.ObjectId):
+        return Property(type=Type.OID, count=1)
+
+    if isinstance(value, uuid.UUID):
+        return Property(type=Type.UUID, count=1)
+
+    if isinstance(value, bson.binary.Binary):
+        return Property(type=Type.BLOB, count=1)
+
+    if isinstance(value, bson.int64.Int64):
+        return Property(type=Type.NUMBER, count=1)
+
+    if isinstance(value, bson.timestamp.Timestamp):
+        return Property(type=Type.TIMESTAMP, count=1)
+
+    raise PropertyTypeError(
+        f"unable to cast value of type {type(value)} to a property type"
+    )
 
 
 @dataclass(init=True, repr=False, eq=False)
@@ -180,10 +210,20 @@ class DiscreteProperty(Property):
 
     def merge(self, other: PropertyType) -> PropertyType:
         if self.type == other.type:
-            keys = self.values.keys() | other.values.keys()
-            for key in keys:
-                self.values[key] += other.values[key]
-            self.unique = len(self.values)
+            if isinstance(other, DiscreteProperty):
+                keys = self.values.keys() | other.values.keys()
+                for key in keys:
+                    self.values[key] += other.values[key]
+                self.unique = len(self.values)
+
+            elif isinstance(other, Property):
+                return other.merge(self)
+
+            else:
+                raise PropertyTypeError(
+                    f"unable to merge discrete property with {type(other)}"
+                )
+
         return super(DiscreteProperty, self).merge(other)
 
     def truncate(self, limit=DISCRET_VALUES_LIMIT) -> Union[Property, "DiscreteProperty"]:
@@ -356,7 +396,8 @@ class ArrayProperty(Property):
         return super(ArrayProperty, self).merge(other)
 
     def truncate(self, limit=DISCRET_VALUES_LIMIT) -> "ArrayProperty":
-        self.items = self.items.truncate(limit)
+        if self.items is not None:
+            self.items = self.items.truncate(limit)
         return self
 
     def __eq__(self, other):
