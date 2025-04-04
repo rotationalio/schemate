@@ -10,9 +10,6 @@ import dataclasses
 class Encoder(json.JSONEncoder):
 
     def default(self, o):
-        if hasattr(o, "asdict") and callable(o.asdict):
-            return o.asdict()
-
         if dataclasses.is_dataclass(o):
             return dataclasses.asdict(o)
 

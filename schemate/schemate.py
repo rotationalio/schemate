@@ -165,7 +165,7 @@ class DiscreteProperty(Property):
     """
 
     unique: int = None
-    values: Dict[str | int, int] = field(default_factory=defaultdict(int))
+    values: Dict[str | int, int] = field(default_factory=lambda: defaultdict(int))
 
     def __post_init__(self):
         # Ensure the values are a defaultdict
@@ -193,14 +193,6 @@ class DiscreteProperty(Property):
                 count=self.count
             )
         return self
-
-    def asdict(self):
-        return {
-            "type": self.type,
-            "count": self.count,
-            "unique": self.unique,
-            "values": dict(self.values),
-        }
 
     def __eq__(self, other):
         if not isinstance(other, DiscreteProperty):
