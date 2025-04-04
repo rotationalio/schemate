@@ -165,7 +165,7 @@ class DiscreteProperty(Property):
     """
 
     unique: int = None
-    values: Dict[str | int, int] = field(default_factory=lambda: defaultdict(int))
+    values: Dict[str | int, int] = field(default_factory=defaultdict(int))
 
     def __post_init__(self):
         # Ensure the values are a defaultdict
