@@ -4,14 +4,19 @@ Schemate profile classes for analyzing and generating JSON schema profiles.
 
 import json
 
-from .types import Type
 from .serialize import Encoder
+from .types import Type, is_base64
+from .exceptions import PropertyValueError, PropertyTypeError
 
+from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Union
+from typing import List, Dict, Union, Any
 
+# If a string is longer than this it is considered a text field.
+DISCRETE_STR_LEN = 256
 
-Properties = Union["Property", "ObjectProperty", "ArrayProperty", "AmbiguousProperty"]
+# Union of all property types that can be inferred from schemaless types.
+PropertyType = Union["Property", "ObjectProperty", "ArrayProperty", "AmbiguousProperty"]
 
 
 @dataclass(init=True, repr=False, eq=True, order=False)
@@ -23,7 +28,7 @@ class Profile:
     schema or another schema format.
     """
 
-    schema: Properties
+    schema: PropertyType
     documents: int = 0
     ambiguous: int = 0
 
@@ -44,18 +49,149 @@ class Profile:
         return json.dumps(self, **kwargs)
 
 
+def cast(value: Any) -> PropertyType:
+    """
+    Cast a value from JSON into a property type. This is the first step in schema
+    analysis and is used to determine how to treat the value in the document.
+    """
+    if value is None:
+        return Property(type=Type.NULL, count=1)
+
+    if isinstance(value, bool):
+        return Property(type=Type.BOOLEAN, count=1)
+
+    if isinstance(value, int):
+        return DiscreteProperty(type=Type.NUMBER, count=1, values={value: 1})
+
+    if isinstance(value, float):
+        return Property(type=Type.NUMBER, count=1)
+
+    if isinstance(value, str):
+        if len(value) < DISCRETE_STR_LEN:
+            return DiscreteProperty(type=Type.STRING, count=1, values={value: 1})
+        else:
+            if is_base64(value):
+                return Property(type=Type.BLOB, count=1)
+            return Property(type=Type.TEXT, count=1)
+
+    if isinstance(value, bytes):
+        return Property(type=Type.BLOB, count=1)
+
+    if isinstance(value, dict):
+        return ObjectProperty(
+            type=Type.OBJECT,
+            properties={
+                k: cast(v) for k, v in value.items()
+            },
+            count=1,
+        )
+
+    if isinstance(value, list):
+        # Cast and merge is required to detect the type(s) of the items in the array
+        items = [cast(item) for item in value]
+        if len(items) == 0:
+            return ArrayProperty(type=Type.ARRAY, count=1, items=None)
+        if len(items) == 1:
+            return ArrayProperty(type=Type.ARRAY, count=1, items=items[0])
+
+        # Merge the items to get the type of the array
+        merged = items[0]
+        for item in items[1:]:
+            merged = merged.merge(item)
+        return ArrayProperty(type=Type.ARRAY, count=1, items=merged)
+
+
 @dataclass(init=True, repr=False, eq=False)
 class Property:
     """
     A property describes a field in a document as well as the number of times that
-    field appears in the document and if the field is a number or a string, the number
-    of unique values in that field. Note that only strings < 255 characters are tracked
-    for uniqueness.
+    field appears in the document. This is the base class for all more complex
+    properties and is used to describe null, boolean, float, text, and blob type
+    properties (e.g. properties that can be counted but don't have sub properties or
+    discrete values).
     """
 
     type: Type
     count: int = 0
-    unique: Optional[int] = 0
+
+    def merge(self, other: PropertyType) -> PropertyType:
+        """
+        Merges the other property into this property. If the other property is not the
+        same type as this property then an ambiguous property will be returned.
+        """
+        # AmbiguousProperty should not call super()
+        if self.type == Type.AMBIGUOUS:
+            raise PropertyTypeError("unable to merge into ambiguous property")
+
+        # Handle mismatched type ambiguity
+        if self.type != other.type:
+            if other.type == Type.AMBIGUOUS:
+                return other.merge(self)
+
+            return AmbiguousProperty(
+                type=Type.AMBIGUOUS,
+                types=[self, other],
+                count=self.count + other.count,
+            )
+
+        # All base classes should update the left-hand side and return self
+        self.count += other.count
+        return self
+
+    def __eq__(self, other: PropertyType) -> bool:
+        if not isinstance(other, Property):
+            return False
+
+        return (
+            self.type == other.type and self.count == other.count
+        )
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}{json.dumps(self, cls=Encoder)}"
+
+
+@dataclass(init=True, repr=False, eq=False, kw_only=True)
+class DiscreteProperty(Property):
+    """
+    A discrete property describes a field that has a fixed set of values such as
+    numbers, or strings (note that booleans are not considered discrete). The
+    distribution of each value is tracked so long as the
+    """
+
+    unique: int = None
+    values: Dict[str | int, int] = field(default_factory=defaultdict(int))
+
+    def __post_init__(self):
+        # Ensure the values are a defaultdict
+        if not isinstance(self.values, defaultdict):
+            if isinstance(self.values, dict):
+                self.values = defaultdict(int, self.values)
+            else:
+                raise PropertyTypeError("values must be a dict or a defaultdict")
+
+        # Ignore unique input and calculate it from the values
+        self.unique = len(self.values)
+
+    def merge(self, other: PropertyType) -> PropertyType:
+        if self.type == other.type:
+            keys = self.values.keys() | other.values.keys()
+            for key in keys:
+                self.values[key] += other.values[key]
+            self.unique = len(self.values)
+        return super(DiscreteProperty, self).merge(other)
+
+    def __eq__(self, other):
+        if not isinstance(other, DiscreteProperty):
+            return False
+
+        if self.values.keys() != other.values.keys():
+            return False
+
+        for key, value in self.values.items():
+            if value != other.values[key]:
+                return False
+
+        return super(DiscreteProperty, self).__eq__(other)
 
 
 @dataclass(init=True, repr=False, eq=False, kw_only=True)
@@ -68,7 +204,74 @@ class AmbiguousProperty(Property):
     """
 
     type: Type = Type.AMBIGUOUS
-    types: List[Properties] = field(default_factory=list)
+    types: List[PropertyType] = field(default_factory=list)
+
+    def __post_init__(self):
+        self.validate()
+
+    def merge(self, other):
+        # Merge both ambiguous types together.
+        # Note an ambiguous type cannot contain an ambiguous type.
+        if self.type == other.type:
+            for item in other.types:
+                if item.type == self.type:
+                    raise PropertyValueError(
+                        "an ambiguous property cannot contain another ambiguous property"
+                    )
+                self.merge(item)
+
+        # Merge a non-ambiguous type into an ambiguous one.
+        else:
+            for item in self.types:
+                if item.type == other.type:
+                    item.merge(other)
+                    break
+            else:
+                self.types.append(other)
+
+            # Cannot call super here to avoid creating another ambiguous property
+            self.count += other.count
+
+        # Make sure the merge is validated
+        self.validate()
+        return self
+
+    def __eq__(self, other):
+        # Only valid types can be compared.
+        self.validate()
+
+        if not isinstance(other, AmbiguousProperty):
+            return False
+
+        # Ensure the other ambiguous property is valid
+        other.validate()
+
+        # Order doesn't matter for equality
+        if len(self.types) != len(other.types):
+            return False
+
+        for item in self.types:
+            for cmpt in other.types:
+                if item.type == cmpt.type:
+                    if item != cmpt:
+                        return False
+                    break
+            else:
+                return False
+
+        return super(AmbiguousProperty, self).__eq__(other)
+
+    def validate(self):
+        types = [t.type for t in self.types]
+        if len(self.types) != len(set(types)):
+            raise PropertyValueError(
+                "ambiguous property contains duplicate types"
+            )
+
+        if Type.AMBIGUOUS in types:
+            raise PropertyValueError(
+                "an ambiguous property cannot contain another ambiguous property"
+            )
 
 
 @dataclass(init=True, repr=False, eq=False, kw_only=True)
@@ -80,7 +283,31 @@ class ObjectProperty(Property):
     """
 
     type: Type = Type.OBJECT
-    properties: Dict[str, Properties] = field(default_factory=dict)
+    properties: Dict[str, PropertyType] = field(default_factory=dict)
+
+    def merge(self, other):
+        if self.type == other.type:
+            # Merge the properties of the other object into this one
+            for key, prop in other.properties.items():
+                if key in self.properties:
+                    self.properties[key].merge(prop)
+                else:
+                    self.properties[key] = prop
+
+        return super(ObjectProperty, self).merge(other)
+
+    def __eq__(self, other):
+        if not isinstance(other, ObjectProperty):
+            return False
+
+        if self.properties.keys() != other.properties.keys():
+            return False
+
+        for key, value in self.properties.items():
+            if value != other.properties[key]:
+                return False
+
+        return super(ObjectProperty, self).__eq__(other)
 
 
 @dataclass(init=True, repr=False, eq=False, kw_only=True)
@@ -92,4 +319,18 @@ class ArrayProperty(Property):
     """
 
     type: Type = Type.ARRAY
-    items: Properties
+    items: PropertyType
+
+    def merge(self, other):
+        if self.type == other.type:
+            self.items.merge(other.items)
+        return super(ArrayProperty, self).merge(other)
+
+    def __eq__(self, other):
+        if not isinstance(other, ArrayProperty):
+            return False
+
+        if self.items != other.items:
+            return False
+
+        return super(ArrayProperty, self).__eq__(other)

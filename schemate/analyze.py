@@ -2,8 +2,12 @@
 Utility to analyze the JSON schema of a document or a group of documents.
 """
 
+# from typing import Any
+
+# from .types import Type
 from .loaders import Loader
-from .schemate import Profile
+from .schemate import Profile  # , PropertyType
+# from .schemate import Property, ObjectProperty, ArrayProperty, AmbiguousProperty
 
 
 class SchemaAnalysis(object):
@@ -36,4 +40,3 @@ class SchemaAnalysis(object):
 
     def analyze(self, document):
         self._result.documents += 1
-        pass

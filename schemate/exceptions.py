@@ -28,3 +28,11 @@ class LoaderError(SchemateException):
 
 class UnsupportedLoader(LoaderError, ValueError):
     pass
+
+
+class PropertyTypeError(SchemateException, TypeError):
+    pass
+
+
+class PropertyValueError(SchemateException, ValueError):
+    pass
