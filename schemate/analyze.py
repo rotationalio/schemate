@@ -53,7 +53,7 @@ class SchemaAnalysis(object):
             return 1 + sum(self.ambiguous(p) for p in property.types)
         elif property.type == Type.OBJECT:
             return sum(self.ambiguous(p) for p in property.properties.values())
-        elif property.type == Type.ARRAY:
+        elif property.type == Type.ARRAY and property.items is not None:
             return self.ambiguous(property.items)
         else:
             return 0

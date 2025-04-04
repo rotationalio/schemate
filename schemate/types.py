@@ -10,6 +10,7 @@ from enum import StrEnum, unique
 @unique
 class Type(StrEnum):
 
+    AMBIGUOUS = "ambiguous"
     NULL = "null"
     BOOLEAN = "boolean"
     OBJECT = "object"
@@ -18,7 +19,11 @@ class Type(StrEnum):
     STRING = "string"
     TEXT = "text"
     BLOB = "blob"
-    AMBIGUOUS = "ambiguous"
+    OID = "oid"
+    DATETIME = "datetime"
+    TIMESTAMP = "timestamp"
+    UUID = "uuid"
+    ULID = "ulid"
 
 
 def is_base64(sb: str | bytes) -> bool:
