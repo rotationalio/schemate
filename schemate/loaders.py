@@ -154,6 +154,13 @@ class MultiFileLoader(Loader):
             self._count = sum(len(loader) for loader in self._loaders)
         return self._count
 
+    def __iter__(self):
+        self._count = 0
+        for loader in self._loaders:
+            for document in loader.load():
+                self._count += 1
+                yield document
+
     def filenames(self):
         for loader in self._loaders:
             yield loader._path
