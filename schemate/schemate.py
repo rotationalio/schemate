@@ -194,6 +194,14 @@ class DiscreteProperty(Property):
             )
         return self
 
+    def asdict(self):
+        return {
+            "type": self.type,
+            "count": self.count,
+            "unique": self.unique,
+            "values": dict(self.values),
+        }
+
     def __eq__(self, other):
         if not isinstance(other, DiscreteProperty):
             return False
