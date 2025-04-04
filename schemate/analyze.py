@@ -2,12 +2,9 @@
 Utility to analyze the JSON schema of a document or a group of documents.
 """
 
-# from typing import Any
-
-# from .types import Type
+from .types import Type
 from .loaders import Loader
-from .schemate import Profile  # , PropertyType
-# from .schemate import Property, ObjectProperty, ArrayProperty, AmbiguousProperty
+from .schemate import Profile, PropertyType, cast
 
 
 class SchemaAnalysis(object):
@@ -38,5 +35,25 @@ class SchemaAnalysis(object):
         for document in self._loader:
             self.analyze(document)
 
+        self._result.schema.truncate()
+        self._result.ambiguous = self.ambiguous(self._result.schema)
+
     def analyze(self, document):
+        # Count the number of documents in the dataset
         self._result.documents += 1
+
+        # Update the schema
+        if self._result.schema is None:
+            self._result.schema = cast(document)
+        else:
+            self._result.schema.merge(cast(document))
+
+    def ambiguous(self, property: PropertyType) -> int:
+        if property.type == Type.AMBIGUOUS:
+            return 1 + sum(self.ambiguous(p) for p in property.types)
+        elif property.type == Type.OBJECT:
+            return sum(self.ambiguous(p) for p in property.properties.values())
+        elif property.type == Type.ARRAY:
+            return self.ambiguous(property.items)
+        else:
+            return 0

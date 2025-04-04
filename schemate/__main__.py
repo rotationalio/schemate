@@ -20,17 +20,6 @@ def analyze(args: argparse.Namespace) -> None:
     print(config)
 
 
-def testrun(args: argparse.Namespace) -> None:
-    from .loaders import DirectoryLoader
-    from .analyze import SchemaAnalysis
-
-    loader = DirectoryLoader("fixtures/pokedex/abilities", recursive=False)
-    job = SchemaAnalysis(loader)
-    job.run()
-
-    print(job.result.dumps(indent=2))
-
-
 ##########################################################################
 ## CLI Helpers
 ##########################################################################
@@ -89,11 +78,6 @@ CMDS = {
             },
         },
     },
-    "test": {
-        "help": "test the schema profile against a set of documents",
-        "func": testrun,
-        "args": {},
-    }
 }
 
 

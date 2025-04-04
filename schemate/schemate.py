@@ -13,7 +13,10 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Union, Any
 
 # If a string is longer than this it is considered a text field.
-DISCRETE_STR_LEN = 256
+DEFAULT_TEXT_LIMIT = 256
+
+# If the number of values exceeds this limit then the property is not considered discrete.
+DISCRET_VALUES_LIMIT = 50
 
 # Union of all property types that can be inferred from schemaless types.
 PropertyType = Union["Property", "ObjectProperty", "ArrayProperty", "AmbiguousProperty"]
@@ -49,7 +52,7 @@ class Profile:
         return json.dumps(self, **kwargs)
 
 
-def cast(value: Any) -> PropertyType:
+def cast(value: Any, text_limit: int = DEFAULT_TEXT_LIMIT) -> PropertyType:
     """
     Cast a value from JSON into a property type. This is the first step in schema
     analysis and is used to determine how to treat the value in the document.
@@ -67,7 +70,7 @@ def cast(value: Any) -> PropertyType:
         return Property(type=Type.NUMBER, count=1)
 
     if isinstance(value, str):
-        if len(value) < DISCRETE_STR_LEN:
+        if len(value) < text_limit:
             return DiscreteProperty(type=Type.STRING, count=1, values={value: 1})
         else:
             if is_base64(value):
@@ -138,6 +141,9 @@ class Property:
         self.count += other.count
         return self
 
+    def truncate(self, limit=DISCRET_VALUES_LIMIT) -> "Property":
+        return self
+
     def __eq__(self, other: PropertyType) -> bool:
         if not isinstance(other, Property):
             return False
@@ -179,6 +185,14 @@ class DiscreteProperty(Property):
                 self.values[key] += other.values[key]
             self.unique = len(self.values)
         return super(DiscreteProperty, self).merge(other)
+
+    def truncate(self, limit=DISCRET_VALUES_LIMIT) -> Union[Property, "DiscreteProperty"]:
+        if len(self.values) > limit:
+            return Property(
+                type=self.type,
+                count=self.count
+            )
+        return self
 
     def __eq__(self, other):
         if not isinstance(other, DiscreteProperty):
@@ -233,6 +247,13 @@ class AmbiguousProperty(Property):
             self.count += other.count
 
         # Make sure the merge is validated
+        self.validate()
+        return self
+
+    def truncate(self, limit=DISCRET_VALUES_LIMIT) -> "AmbiguousProperty":
+        self.types = [
+            item.truncate(limit) for item in self.types
+        ]
         self.validate()
         return self
 
@@ -296,6 +317,11 @@ class ObjectProperty(Property):
 
         return super(ObjectProperty, self).merge(other)
 
+    def truncate(self, limit=DISCRET_VALUES_LIMIT) -> "ObjectProperty":
+        for key, prop in self.properties.items():
+            self.properties[key] = prop.truncate(limit)
+        return self
+
     def __eq__(self, other):
         if not isinstance(other, ObjectProperty):
             return False
@@ -323,8 +349,15 @@ class ArrayProperty(Property):
 
     def merge(self, other):
         if self.type == other.type:
-            self.items.merge(other.items)
+            if self.items is None:
+                self.items = other.items
+            elif other.items is not None:
+                self.items.merge(other.items)
         return super(ArrayProperty, self).merge(other)
+
+    def truncate(self, limit=DISCRET_VALUES_LIMIT) -> "ArrayProperty":
+        self.items = self.items.truncate(limit)
+        return self
 
     def __eq__(self, other):
         if not isinstance(other, ArrayProperty):
