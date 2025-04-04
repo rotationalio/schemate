@@ -255,10 +255,16 @@ class MongoDBLoader(Loader):
 
         # TODO: do we need to check if the collections and database exist first?
         if isinstance(collections, str):
-            self._collections.append(self._db[collections])
+            if collections == "*" or collections == "all":
+                self._collections = self._list_all_collections()
+            else:
+                self._collections.append(self._db[collections])
         else:
             for collection in collections:
                 self._collections.append(self._db[collection])
+
+        if len(collections) == 0:
+            raise LoaderError("mongodb: no collections specified")
 
     def __len__(self):
         if self._count is None:
@@ -274,3 +280,12 @@ class MongoDBLoader(Loader):
             for document in collection.find():
                 self._count += 1
                 yield document
+
+    def _list_all_collections(self):
+        """
+        Returns a list of all collections in the database.
+        """
+        try:
+            return self._db.list_collection_names()
+        except AttributeError:
+            return self._db.collection_names()
