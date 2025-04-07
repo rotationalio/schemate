@@ -256,12 +256,16 @@ class MongoDBLoader(Loader):
         # TODO: do we need to check if the collections and database exist first?
         if isinstance(collections, str):
             if collections == "*" or collections == "all":
-                self._collections = self._list_all_collections()
+                self._collections = [
+                    self._db[collection]
+                    for collection in self._list_all_collections()
+                ]
             else:
                 self._collections.append(self._db[collections])
         else:
-            for collection in collections:
-                self._collections.append(self._db[collection])
+            self._collections = [
+                self._db[collection] for collection in collections
+            ]
 
         if len(collections) == 0:
             raise LoaderError("mongodb: no collections specified")

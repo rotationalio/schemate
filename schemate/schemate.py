@@ -22,7 +22,7 @@ from typing import List, Dict, Union, Any
 DEFAULT_TEXT_LIMIT = 256
 
 # If the number of values exceeds this limit then the property is not considered discrete.
-DISCRET_VALUES_LIMIT = 50
+DISCRET_VALUES_LIMIT = 32
 
 # Union of all property types that can be inferred from schemaless types.
 PropertyType = Union["Property", "ObjectProperty", "ArrayProperty", "AmbiguousProperty"]
@@ -211,7 +211,17 @@ class DiscreteProperty(Property):
     def merge(self, other: PropertyType) -> PropertyType:
         if self.type == other.type:
             if isinstance(other, DiscreteProperty):
+                # To save memory we convert to a Property if the number of unique
+                # values exceeds the discrete values limit.
                 keys = self.values.keys() | other.values.keys()
+                if len(keys) > DISCRET_VALUES_LIMIT:
+                    return Property(
+                        type=self.type,
+                        count=self.count + other.count
+                    )
+
+                # Otherwise keep tracking the discrete values
+                # Note that the count will be updated in the call to super() below.
                 for key in keys:
                     self.values[key] += other.values[key]
                 self.unique = len(self.values)
