@@ -42,9 +42,11 @@ class SchemaAnalysis(object):
         for document in self._loader:
             self.analyze(document)
 
-        logger.info("finalizing schemate analysis")
-        self._result.schema.truncate()
-        self._result.ambiguous = self.ambiguous(self._result.schema)
+        if self._result.schema is not None:
+            logger.info("finalizing schemate analysis")
+            self._result.schema.truncate()
+            self._result.ambiguous = self.ambiguous(self._result.schema)
+
         logger.info("schemate analysis complete")
 
     def analyze(self, document):
