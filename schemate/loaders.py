@@ -6,10 +6,14 @@ import os
 import glob
 import json
 import yaml
+import logging
 
 from pymongo import MongoClient
 from collections.abc import Iterable, Sized
 from .exceptions import UnsupportedLoader, LoaderError
+
+
+logger = logging.getLogger(__name__)
 
 
 class Loader(Iterable, Sized):
@@ -280,7 +284,9 @@ class MongoDBLoader(Loader):
 
     def __iter__(self):
         self._count = 0
+        logger.debug(f"loading documents from {len(self._collections)} collections in {self._db.name}")
         for collection in self._collections:
+            logger.debug(f"loading documents from collection {collection.name}")
             for document in collection.find():
                 self._count += 1
                 yield document
