@@ -2,9 +2,14 @@
 Utility to analyze the JSON schema of a document or a group of documents.
 """
 
+import logging
+
 from .types import Type
 from .loaders import Loader
 from .schemate import Profile, PropertyType, cast
+
+
+logger = logging.getLogger(__name__)
 
 
 class SchemaAnalysis(object):
@@ -31,12 +36,16 @@ class SchemaAnalysis(object):
         """
         Perform an analysis on the documents provided by the loader.
         """
+        logger.info(f"starting schemate analysis using {self._loader.__class__.__name__}")
+
         self._result = Profile(schema=None)
         for document in self._loader:
             self.analyze(document)
 
+        logger.info("finalizing schemate analysis")
         self._result.schema.truncate()
         self._result.ambiguous = self.ambiguous(self._result.schema)
+        logger.info("schemate analysis complete")
 
     def analyze(self, document):
         # Count the number of documents in the dataset
